@@ -250,11 +250,6 @@ _I already did that earlier in the script_
 * Save the data set using into a csv file. Hint: look into write.csv()
 
 ```{r}
-#final_df$Gender <- final_df$Gender %>% 
-  #str_replace_all('[1]','female')
-
-#final_df$Gender <- final_df$Gender %>% 
- # str_replace_all('[2]','male')
 
 final_df$Gender <- final_df$Gender %>% 
   recode_factor('1'='female','2'='male')
