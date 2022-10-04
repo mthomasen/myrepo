@@ -1,0 +1,110 @@
+---
+title: "assignment_1_extra_code"
+author: "Manuel Thomasen"
+date: "2022-10-04"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+average_mlu <- log(1.5)
+sd_mlu_asd <- log(1.5)-log(1.5-0.5)
+sd_mlu_td <- log(1.5)-log(1.5-0.3)
+change_mlu_asd <- 0.4
+change_mlu_td <- 0.6
+change_sd_mlu_asd <- 0.4
+change_sd_mlu_td <- 0.2
+
+sample_size <- 100
+```
+
+
+
+doesn't work, because if can only look at one variable at a time and does not repeat the process after that one variable 
+- Thange if to a ifelse function
+- chnage rnorm to rlnorm (hmmm, maybe not)
+```{r}
+data_sim_fun <- function(n, mlu_mean, mlu_sd_td, mlu_sd_asd, b_mean_td, b_mean_asd, b_sd_td, b_sd_asd){
+  df <- tibble(ID=seq(n+n),
+                  diagnosis=rep(c('TD', 'ASD'), each=n),
+                  if (diagnosis=='TD'){
+                    mutate(
+                      MLU=rnorm(
+                        n,mean=mlu_mean,sd=mlu_sd_td),
+                      Beta=rnorm(
+                        n, mean=b_mean_td, sd=b_sd_td),
+                      error=0.2)
+                    }
+                  else{
+                    mutate(
+                      MLU=rnorm(
+                        n,mean=mlu_mean,sd=mlu_sd_asd),
+                      Beta=rnorm(
+                        n, mean=b_mean_asd, sd=b_sd_asd),
+                      error=0.2)
+                    }
+                  )
+                  
+  return(df)
+}
+
+df <- data_sim_fun(sample_size, average_mlu, sd_mlu_td, sd_mlu_asd, change_mlu_td, change_mlu_asd, change_sd_mlu_td, change_sd_mlu_asd)
+
+
+```
+
+
+works, but not very pretty
+```{r}
+data_sim_asd <- function(n, mlu_mean, mlu_sd, b_mean, b_sd){
+ td_df <- tibble(ID=(seq(n), 
+                  MLU=rnorm(n, mean=mlu_mean,sd=mlu_sd),
+                  Beta=rnorm(n, mean=b_mean, sd=b_sd),
+                  error=0.2)
+  return(td_df)
+}
+
+td_df <- data_sim_td(sample_size, average_mlu, sd_mlu_td, change_mlu_td, change_sd_mlu_td)
+
+data_sim_asd <- function(n, mlu_mean, mlu_sd, b_mean, b_sd){
+ asd_df <- tibble(ID=(seq(n)+n), 
+                  MLU=rnorm(n, mean=mlu_mean,sd=mlu_sd),
+                  Beta=rnorm(n, mean=b_mean, sd=b_sd),
+                  error=0.2)
+  return(asd_df)
+}
+
+asd_df <- data_sim_asd(sample_size, average_mlu, sd_mlu_asd, change_mlu_asd, change_sd_mlu_asd)
+
+expand_td <- tibble(
+  expand.grid(
+    ID=seq(sample_size),
+    visit=seq(6)
+  )
+)
+
+td_df <- merge(td_df, expand_td)
+
+expand_asd <- tibble(
+  expand.grid(
+    ID=(seq(sample_size)+sample_size),
+    visit=seq(6)
+  )
+)
+
+asd_df <- merge(asd_df, expand_asd)
+
+td_df$condition <- 'TD'
+
+asd_df$condition <- 'ASD'
+
+sim_df <- rbind(asd_df, td_df)
+
+for (i in seq(nrow(sim_df))){
+  sim_df$MLU_true[i] = exp(rnorm(1, sim_df$MLU[i] + sim_df$Beta[i] * (sim_df$visit[i]-1), sim_df$error[i]))
+}
+```
+

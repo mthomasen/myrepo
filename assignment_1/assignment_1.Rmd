@@ -43,6 +43,12 @@ Q3 - Given the model(s) from Q2, how well do they predict the data? Discuss both
 Below you can find more detailed instructions for each part of the assignment.
 
 ## Part 1 - Simulating data
+```{r}
+pacman::p_load(tidyverse, brms, ggplot)
+
+df <- read_csv('assignment_data_clean.csv')
+```
+
 
 Before we even think of analyzing the data, we should make sure we understand the problem, and we plan the analysis. To do so, we need to simulate data and analyze the simulated data (where we know the ground truth).
 
@@ -64,9 +70,61 @@ We go through the literature and we settle for some values for these parameters:
 - average individual variability in change for ASD 0.4; for TD 0.2 (remember ASD tends to be more heterogeneous)
 - error is identified as 0.2
 
+CHNAGE the sd to the same scale as the change in mlu
+
+```{r}
+average_mlu <- log(1.5)
+sd_mlu_asd <- log(1.5)-log(1.5-0.5)
+sd_mlu_td <- log(1.5)-log(1.5-0.3)
+
+#average_mlu <- 1.5
+#sd_mlu_td <- 0.3
+#sd_mlu_asd <- 0.5
+change_mlu_asd <- 0.4/1.5
+change_mlu_td <- 0.6/1.5
+change_sd_mlu_asd <- 0.4*(0.4/1.5)
+change_sd_mlu_td <- 0.2*(0.6/1.5)
+
+sample_size <- 100
+```
+
+
+CHECK
+- should it be rlnorm, instead of changing it when i specify the variables 
+
+```{r}
+data_sim_fun <- function(n, mlu_mean, mlu_sd_td, mlu_sd_asd, b_mean_td, b_mean_asd, b_sd_td, b_sd_asd){
+  df_1 <- tibble(ID=seq(n+n),
+                  diagnosis=rep(c('TD', 'ASD'), each=n))
+  df_1$MLU_int <- ifelse(df_1$diagnosis=='TD',
+                   rnorm(n,mean=mlu_mean,sd=mlu_sd_td),
+                   rnorm(n,mean=mlu_mean,sd=mlu_sd_asd))
+  df_1$beta <- ifelse(df_1$diagnosis=='TD', 
+                    rnorm(n, mean = b_mean_td, sd=mlu_sd_td), 
+                    rnorm(n, mean=b_mean_asd, sd=b_sd_asd))
+  df_1$error <- 0.2
+  expand_df <- tibble(
+    expand.grid(
+      ID=seq(n+n),
+      visit=seq(6)))
+  df <- merge(df_1, expand_df)
+  for (i in seq(nrow(df))){
+    df$MLU_true[i] = exp(rnorm(1, df$MLU_int[i] + df$beta[i] * (df$visit[i]-1), df$error[i]))
+}
+  return(df)
+}
+
+df <- data_sim_fun(sample_size, average_mlu, sd_mlu_td, sd_mlu_asd, change_mlu_td, change_mlu_asd, change_sd_mlu_td, change_sd_mlu_asd)
+```
+
+
+
+
 This would mean that on average the difference between ASD and TD participants is 0 at visit 1, 0.2 at visit 2, 0.4 at visit 3, 0.6 at visit 4, 0.8 at visit 5 and 1 at visit 6.
 
 With these values in mind, simulate data, plot the data (to check everything is alright); and set up an analysis pipeline.
+
+
 Remember the usual bayesian workflow:
 - define the formula
 - define the prior
