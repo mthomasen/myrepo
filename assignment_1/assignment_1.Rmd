@@ -44,9 +44,9 @@ Below you can find more detailed instructions for each part of the assignment.
 
 ## Part 1 - Simulating data
 ```{r}
-pacman::p_load(tidyverse, brms, ggplot)
+pacman::p_load(tidyverse, brms, ggplot, rstanarm)
 
-df <- read_csv('assignment_data_clean.csv')
+real_data <- read_csv('assignment_data_clean.csv')
 ```
 
 
@@ -70,16 +70,31 @@ We go through the literature and we settle for some values for these parameters:
 - average individual variability in change for ASD 0.4; for TD 0.2 (remember ASD tends to be more heterogeneous)
 - error is identified as 0.2
 
-CHNAGE the sd to the same scale as the change in mlu
 
+This would mean that on average the difference between ASD and TD participants is 0 at visit 1, 0.2 at visit 2, 0.4 at visit 3, 0.6 at visit 4, 0.8 at visit 5 and 1 at visit 6.
+
+With these values in mind, simulate data, plot the data (to check everything is alright); and set up an analysis pipeline.
+
+Remember the usual bayesian workflow:
+- define the formula
+- define the prior
+- prior predictive checks
+- fit the model
+- model quality checks: traceplots, divergences, rhat, effective samples
+- model quality checks: posterior predictive checks, prior-posterior update checks
+- model comparison
+
+Once the pipeline is in place, loop through different sample sizes to assess how much data you would need to collect. N.B. for inspiration on how to set this up, check the tutorials by Kurz that are linked in the syllabus.
+
+BONUS questions for Part 1: what if the difference between ASD and TD was 0? how big of a sample size would you need? What about different effect sizes, and different error terms?
+
+### Simulating data
+To make beta values between each visit we would need the standard diviation between visits 
 ```{r}
 average_mlu <- log(1.5)
 sd_mlu_asd <- log(1.5)-log(1.5-0.5)
 sd_mlu_td <- log(1.5)-log(1.5-0.3)
 
-#average_mlu <- 1.5
-#sd_mlu_td <- 0.3
-#sd_mlu_asd <- 0.5
 change_mlu_asd <- 0.4/1.5
 change_mlu_td <- 0.6/1.5
 change_sd_mlu_asd <- 0.4*(0.4/1.5)
@@ -87,10 +102,6 @@ change_sd_mlu_td <- 0.2*(0.6/1.5)
 
 sample_size <- 100
 ```
-
-
-CHECK
-- should it be rlnorm, instead of changing it when i specify the variables 
 
 ```{r}
 data_sim_fun <- function(n, mlu_mean, mlu_sd_td, mlu_sd_asd, b_mean_td, b_mean_asd, b_sd_td, b_sd_asd){
@@ -108,6 +119,7 @@ data_sim_fun <- function(n, mlu_mean, mlu_sd_td, mlu_sd_asd, b_mean_td, b_mean_a
       ID=seq(n+n),
       visit=seq(6)))
   df <- merge(df_1, expand_df)
+
   for (i in seq(nrow(df))){
     df$MLU_true[i] = exp(rnorm(1, df$MLU_int[i] + df$beta[i] * (df$visit[i]-1), df$error[i]))
 }
@@ -117,32 +129,83 @@ data_sim_fun <- function(n, mlu_mean, mlu_sd_td, mlu_sd_asd, b_mean_td, b_mean_a
 df <- data_sim_fun(sample_size, average_mlu, sd_mlu_td, sd_mlu_asd, change_mlu_td, change_mlu_asd, change_sd_mlu_td, change_sd_mlu_asd)
 ```
 
+### plot simulated data
+```{r}
+plot1 <- ggplot(df, aes(visit,MLU_true, color=diagnosis, group=ID))+
+  theme_bw()+
+  geom_point()+
+  geom_line(alpha=0.3)
 
 
+plot2 <- df %>% 
+  filter(diagnosis=="ASD") %>% 
+  ggplot(aes(visit,MLU_true, group=ID, color="ASD"))+
+  theme_bw()+
+  geom_point()+
+  geom_line(alpha=0.3)
 
-This would mean that on average the difference between ASD and TD participants is 0 at visit 1, 0.2 at visit 2, 0.4 at visit 3, 0.6 at visit 4, 0.8 at visit 5 and 1 at visit 6.
+plot3 <- df %>% 
+  filter(diagnosis=="TD") %>% 
+  ggplot(aes(visit,MLU_true, group=ID, color="TD"))+
+  theme_bw()+
+  geom_point()+
+  geom_line(alpha=0.3)
 
-With these values in mind, simulate data, plot the data (to check everything is alright); and set up an analysis pipeline.
 
+gridExtra::grid.arrange(plot1, plot2, plot3)
+```
+### Analysing simulated data 
 
-Remember the usual bayesian workflow:
-- define the formula
-- define the prior
-- prior predictive checks
-- fit the model
-- model quality checks: traceplots, divergences, rhat, effective samples
-- model quality checks: posterior predictive checks, prior-posterior update checks
-- model comparison
-
-Once the pipeline is in place, loop through different sample sizes to assess how much data you would need to collect. N.B. for inspiration on how to set this up, check the tutorials by Kurz that are linked in the syllabus.
-
-BONUS questions for Part 1: what if the difference between ASD and TD was 0? how big of a sample size would you need? What about different effect sizes, and different error terms?
+define formula
 
 ```{r}
+MLU_f4 <- bf(MLU_true ~ 0 + diagnosis + diagnosis:visit + (1 + visit| gr(ID, by = diagnosis)))
+
+```
+priors
+```{r}
+
+priors <- c(prior(normal(0,0.1),class=b, lb=0),
+prior(normal(0.41,0.05),class=b,coef="diagnosisASD"),
+prior(normal(0.41,0.02),class=b,coef="diagnosisTD"),
+prior(normal(0,0.06),class=b,coef="diagnosisASD:visit"),
+prior(normal(0,0.03),class=b,coef="diagnosisTD:visit"),
+prior(normal(0,0.2),class=sd,coef=Intercept,group=ID),
+prior(normal(0,0.1),class=sd,coef=visit,group=ID),
+prior(normal(0,0.2),class=sigma),
+prior(lkj(1),class="cor"))
 
 ```
 
+prior predictive checks
 
+```{r}
+MLU_p4_prior <- brm(
+  MLU_f4, 
+  data = df, 
+  prior = priors,
+  family = lognormal,
+  sample_prior = 'only',
+  backend = "cmdstanr",
+chains = 2,
+cores = 2,
+control = list(
+adapt_delta = 0.99,
+max_treedepth = 20
+)
+)
+
+pp_check(MLU_p4_prior, ndraws=100)
+```
+
+
+fit the model
+
+model quality checks: traceplots, divergences, rhat, effective samples
+
+model quality checks: posterior predictive checks, prior-posterior update checks
+
+model comparison
 
 # Part 2 - Strong in the Bayesian ken, you are now ready to analyse the actual data
 
