@@ -135,3 +135,56 @@ data_sim_fun <- function(n, mlu_mean, mlu_sd_td, mlu_sd_asd, b_mean_td, b_mean_a
 
 df <- data_sim_fun(sample_size, average_mlu, sd_mlu_td, sd_mlu_asd, change_mlu_td, change_mlu_asd, change_sd_mlu_td, change_sd_mlu_asd)
 ```
+```{r}
+int_asd <- rlnorm(n, mean=average_mlu, sd=sd_mlu_asd)
+int_td <- rlnorm(n, mean=average_mlu, sd=sd_mlu_td)
+
+slope_asd <- rnorm(n, mean=change_mlu_asd, sd=change_sd_mlu_asd)
+slope_td <- rnorm(n, mean = change_mlu_td, sd=change_sd_mlu_td)
+
+error_td <- rlnorm(n, mean=0, sd=e)
+error_asd <- rlnorm(n, mean=0, sd=e)
+```
+
+sim_data <- 
+  tibble(diagnosis=rep(c('TD', 'ASD'), each=n)) %>% 
+  mutate(intercept=ifelse(diagnosis=='TD', int_td, int_asd)) %>% 
+  mutate(slope=ifelse(diagnosis=='TD', slope_td, slope_asd)) %>% 
+  mutate(error=ifelse(diagnosis=='TD', error_td, error_asd)) %>% 
+  dplyr::mutate(ID=row_number()) %>% 
+  slice(rep(1:n(), each=6)) %>% 
+  add_column(visit=rep(c(1,2,3,4,5,6), times=n+n))
+
+for(i in seq(nrow(sim_data))){
+  sim_data$MLU[i]=exp(rnorm(1, sim_data$intercept[i]+sim_data$slope[i]*(sim_data$visit[i]-1), sim_data$error[i]))
+}
+
+int_asd <- rlnorm(sample_size, mean=average_mlu, sd=sd_mlu_asd)
+int_td <- rlnorm(sample_size, mean=average_mlu, sd=sd_mlu_td)
+
+slope_asd <- rnorm(sample_size, mean=change_mlu_asd, sd=change_sd_mlu_asd)
+slope_td <- rnorm(sample_size, mean = change_mlu_td, sd=change_sd_mlu_td)
+
+error_td <- rlnorm(sample_size, mean=0, sd=e)
+error_asd <- rlnorm(sample_size, mean=0, sd=e)
+
+data_sim <- 
+  tibble(diagnosis=rep(c('TD', 'ASD'), each=n))
+data_sim$MLU_int <-
+  ifelse(data_sim$diagnosis=='TD',int_td,int_asd)
+data_sim$beta <- ifelse(data_sim$diagnosis=='TD', slope_td, slope_asd)
+data_sim$error <- ifelse(data_sim$diagnosis=='TD', error_td, error_asd)
+data_sim <- dplyr:: mutate(ID=row_number()) %>% slice(rep(1:n()), each=6)
+  
+  expand_df <- tibble(
+    expand.grid(
+      ID=seq(sample_size+sample_size),
+      visit=seq(6)))
+  df <- merge(data_sim, expand_df)
+
+  for (i in seq(nrow(df))){
+    df$MLU[i] = exp(rnorm(1, df$intercept[i] + df$slope[i] * (df$visit[i]-1), df$error[i]))
+}
+  
+
+df <- data_sim_fun(sample_size, average_mlu, sd_mlu_td, sd_mlu_asd, change_mlu_td, change_mlu_asd, change_sd_mlu_td, change_sd_mlu_asd)

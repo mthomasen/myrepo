@@ -44,7 +44,29 @@ Below you can find more detailed instructions for each part of the assignment.
 
 ## Part 1 - Simulating data
 ```{r}
-pacman::p_load(tidyverse, brms, ggplot, rstanarm)
+pacman::p_load(glue,
+       tidyr,
+       data.table,
+       moments,
+       tidybayes,
+       tibble,
+       cowplot,
+       viridis,
+       brms,
+       rstan,
+       cmdstanr,
+       magrittr,
+       gridExtra,
+       grid,
+       lattice, 
+       tidyverse, 
+       ggplot2,
+       ggridges,
+       ellipse,
+       Rmisc, 
+       dplyr, 
+       "rmarkdown", 
+       knitr)
 
 real_data <- read_csv('assignment_data_clean.csv')
 ```
@@ -91,121 +113,145 @@ BONUS questions for Part 1: what if the difference between ASD and TD was 0? how
 ### Simulating data
 To make beta values between each visit we would need the standard diviation between visits 
 ```{r}
-average_mlu <- log(1.5)
-sd_mlu_asd <- log(1.5)-log(1.5-0.5)
-sd_mlu_td <- log(1.5)-log(1.5-0.3)
 
-change_mlu_asd <- 0.4/1.5
-change_mlu_td <- 0.6/1.5
-change_sd_mlu_asd <- 0.4*(0.4/1.5)
-change_sd_mlu_td <- 0.2*(0.6/1.5)
 
-sample_size <- 100
+average_mlu <- 1.5
+ sd_mlu_asd <- 0.5
+ sd_mlu_td <- 0.3
+ 
+ change_mlu_asd <- 0.4/1.5
+ change_mlu_td <- 0.6/1.5
+ change_sd_mlu_asd <- 0.4*(0.4/1.5)
+ change_sd_mlu_td <- 0.2*(0.6/1.5)
+ e <- 0.2
+
+n <- 100
 ```
 
 ```{r}
-data_sim_fun <- function(n, mlu_mean, mlu_sd_td, mlu_sd_asd, b_mean_td, b_mean_asd, b_sd_td, b_sd_asd){
-  df_1 <- tibble(ID=seq(n+n),
-                  diagnosis=rep(c('TD', 'ASD'), each=n))
-  df_1$MLU_int <- ifelse(df_1$diagnosis=='TD',
-                   rnorm(n,mean=mlu_mean,sd=mlu_sd_td),
-                   rnorm(n,mean=mlu_mean,sd=mlu_sd_asd))
-  df_1$beta <- ifelse(df_1$diagnosis=='TD', 
-                    rnorm(n, mean = b_mean_td, sd=mlu_sd_td), 
-                    rnorm(n, mean=b_mean_asd, sd=b_sd_asd))
-  df_1$error <- 0.2
-  expand_df <- tibble(
-    expand.grid(
-      ID=seq(n+n),
-      visit=seq(6)))
-  df <- merge(df_1, expand_df)
+int_asd <- rlnorm(n, meanlog=average_mlu, sdlog=sd_mlu_asd)
+int_td <- rlnorm(n, meanlog=average_mlu, sdlog=sd_mlu_td)
 
-  for (i in seq(nrow(df))){
-    df$MLU_true[i] = exp(rnorm(1, df$MLU_int[i] + df$beta[i] * (df$visit[i]-1), df$error[i]))
-}
-  return(df)
-}
+slope_asd <- rnorm(n, mean=change_mlu_asd, sd=change_sd_mlu_asd)
+slope_td <- rnorm(n, mean = change_mlu_td, sd=change_sd_mlu_td)
 
-df <- data_sim_fun(sample_size, average_mlu, sd_mlu_td, sd_mlu_asd, change_mlu_td, change_mlu_asd, change_sd_mlu_td, change_sd_mlu_asd)
+error_td <- rlnorm(n, meanlog=0, sdlog=e)
+error_asd <- rlnorm(n, meanlog=0, sdlog=e)
+```
+
+```{r}
+ sim_data <- 
+   tibble(diagnosis=rep(c('TD', 'ASD'), each=n)) %>% 
+   mutate(intercept=ifelse(diagnosis=='TD', int_td, int_asd)) %>% 
+   mutate(slope=ifelse(diagnosis=='TD', slope_td, slope_asd)) %>% 
+   mutate(error=ifelse(diagnosis=='TD', error_td, error_asd)) %>% 
+   dplyr::mutate(ID=row_number()) %>% 
+   slice(rep(1:n(), each=6)) %>% 
+   add_column(visit=rep(c(1,2,3,4,5,6), times=n+n))
+ 
+ for(i in seq(nrow(sim_data))){
+   sim_data$MLU[i]=rnorm(1,sim_data$intercept[i]+sim_data$slope[i]*(sim_data$visit[i]-1), sim_data$error[i])
+ }
 ```
 
 ### plot simulated data
 ```{r}
-plot1 <- ggplot(df, aes(visit,MLU_true, color=diagnosis, group=ID))+
+ggplot(sim_data, aes(visit,MLU, color=diagnosis, group=ID))+
   theme_bw()+
   geom_point()+
   geom_line(alpha=0.3)
 
-
-plot2 <- df %>% 
-  filter(diagnosis=="ASD") %>% 
-  ggplot(aes(visit,MLU_true, group=ID, color="ASD"))+
-  theme_bw()+
-  geom_point()+
-  geom_line(alpha=0.3)
-
-plot3 <- df %>% 
-  filter(diagnosis=="TD") %>% 
-  ggplot(aes(visit,MLU_true, group=ID, color="TD"))+
-  theme_bw()+
-  geom_point()+
-  geom_line(alpha=0.3)
-
-
-gridExtra::grid.arrange(plot1, plot2, plot3)
 ```
-### Analysing simulated data 
+##Analysing simulated data 
 
-define formula
+###define formula
 
 ```{r}
-MLU_f4 <- bf(MLU_true ~ 0 + diagnosis + diagnosis:visit + (1 + visit| gr(ID, by = diagnosis)))
-
-```
-priors
-```{r}
-
-priors <- c(prior(normal(0,0.1),class=b, lb=0),
-prior(normal(0.41,0.05),class=b,coef="diagnosisASD"),
-prior(normal(0.41,0.02),class=b,coef="diagnosisTD"),
-prior(normal(0,0.06),class=b,coef="diagnosisASD:visit"),
-prior(normal(0,0.03),class=b,coef="diagnosisTD:visit"),
-prior(normal(0,0.2),class=sd,coef=Intercept,group=ID),
-prior(normal(0,0.1),class=sd,coef=visit,group=ID),
-prior(normal(0,0.2),class=sigma),
-prior(lkj(1),class="cor"))
+MLU_f1 <- bf(MLU ~ 0 + diagnosis + diagnosis:visit + (1 + visit|ID))
 
 ```
 
-prior predictive checks
+###Investigate and set priors
+```{r}
+get_prior(data = sim_data, family = gaussian, MLU_f1)
+
+priors <- c(
+prior(normal(1.5,0.5),class=b,coef="diagnosisASD"),
+prior(normal(1.5,0.3),class=b,coef="diagnosisTD"),
+prior(normal(0,0.5),class=b),
+prior(normal(0,0.5),class=sd),
+prior(lkj(2),class=cor))
+
+```
+
+###Model using priors
 
 ```{r}
-MLU_p4_prior <- brm(
-  MLU_f4, 
-  data = df, 
+MLU_prior_m1 <- brm(
+  MLU_f1, 
+  data = sim_data, 
   prior = priors,
-  family = lognormal,
+  family = gaussian,
   sample_prior = 'only',
+  iter=10000,
+  warmup = 1000,
   backend = "cmdstanr",
-chains = 2,
-cores = 2,
-control = list(
-adapt_delta = 0.99,
-max_treedepth = 20
+  threads = threading(2),
+  chains = 2,
+  cores = 2,
+  control = list(
+    adapt_delta = 0.99,
+    max_treedepth = 20
 )
 )
 
-pp_check(MLU_p4_prior, ndraws=100)
+```
+###prior predictive checks
+```{r}
+pp_check(MLU_prior_m1, ndraws=100)
 ```
 
+###fit the model
 
-fit the model
+```{r}
+MLU_prior_m1_fit <- brm(
+  MLU_f1, 
+  data = sim_data, 
+  prior = priors,
+  family = gaussian,
+  sample_prior = TRUE,
+  iter=10000,
+  warmup = 1000,
+  backend = "cmdstanr",
+  threads = threading(2),
+  chains = 2,
+  cores = 2,
+  control = list(
+    adapt_delta = 0.99,
+    max_treedepth = 20
+)
+)
+```
+###posterior predictive check
+```{r}
+pp_check(MLU_prior_m1_fit, ndraws = 100)
+```
+###traceplot for fitted model
+```{r}
+plot(MLU_prior_m1_fit)
+```
 
-model quality checks: traceplots, divergences, rhat, effective samples
+### parameter recovery from fitted model
 
-model quality checks: posterior predictive checks, prior-posterior update checks
+```{r}
+print(MLU_prior_m1_fit)
+```
 
-model comparison
+### prior posterior update check 
+
+### Estimating effectsize, baysian power analysis 
+
+
 
 # Part 2 - Strong in the Bayesian ken, you are now ready to analyse the actual data
 
