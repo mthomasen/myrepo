@@ -58,8 +58,7 @@ pacman::p_load(glue,
        magrittr,
        gridExtra,
        grid,
-       lattice, 
-       tidyverse, 
+       lattice,
        ggplot2,
        ggridges,
        ellipse,
@@ -67,6 +66,10 @@ pacman::p_load(glue,
        dplyr, 
        "rmarkdown", 
        knitr)
+
+pacman::p_load(tidyverse)
+
+pacman::p_load(purr)
 
 real_data <- read_csv('assignment_data_clean.csv')
 ```
@@ -113,8 +116,6 @@ BONUS questions for Part 1: what if the difference between ASD and TD was 0? how
 ### Simulating data
 To make beta values between each visit we would need the standard diviation between visits 
 ```{r}
-
-
 average_mlu <- 1.5
  sd_mlu_asd <- 0.5
  sd_mlu_td <- 0.3
@@ -150,7 +151,7 @@ error_asd <- rlnorm(n, meanlog=0, sdlog=e)
    add_column(visit=rep(c(1,2,3,4,5,6), times=n+n))
  
  for(i in seq(nrow(sim_data))){
-   sim_data$MLU[i]=rnorm(1,sim_data$intercept[i]+sim_data$slope[i]*(sim_data$visit[i]-1), sim_data$error[i])
+   sim_data$MLU[i] <- rnorm(1,sim_data$intercept[i]+sim_data$slope[i]*(sim_data$visit[i]-1), sim_data$error[i])
  }
 ```
 
@@ -171,9 +172,14 @@ MLU_f1 <- bf(MLU ~ 0 + diagnosis + diagnosis:visit + (1 + visit|ID))
 
 ```
 
+```{r}
+lognorm_fam <- brmsfamily('lognormal', bhaz = list(Boundary.knots=c(-1,31)))
+```
+
+
 ###Investigate and set priors
 ```{r}
-get_prior(data = sim_data, family = gaussian, MLU_f1)
+get_prior(data = sim_data, family = lognorm_fam, MLU_f1)
 
 priors <- c(
 prior(normal(1.5,0.5),class=b,coef="diagnosisASD"),
@@ -191,7 +197,8 @@ MLU_prior_m1 <- brm(
   MLU_f1, 
   data = sim_data, 
   prior = priors,
-  family = gaussian,
+  family = lognorm_fam,
+  refresh=0,
   sample_prior = 'only',
   iter=10000,
   warmup = 1000,
@@ -218,7 +225,8 @@ MLU_prior_m1_fit <- brm(
   MLU_f1, 
   data = sim_data, 
   prior = priors,
-  family = gaussian,
+  family = lognorm_fam,
+  refresh=0,
   sample_prior = TRUE,
   iter=10000,
   warmup = 1000,
@@ -248,8 +256,153 @@ print(MLU_prior_m1_fit)
 ```
 
 ### prior posterior update check 
+```{r}
+posterior <- as_draws_df(MLU_prior_m1_fit)
+
+plot1 <- ggplot(posterior)+
+  geom_histogram(aes(prior_b_diagnosisASD), fill='red', color='black', alpha=0.3, bins=50)+
+  geom_histogram(aes(b_diagnosisASD), fill='green', color='black', alpha=0.3, bins=50)+
+  theme_classic()+
+  ggtitle('prior-posterior update check on interceps for ASD')
+
+plot2 <- ggplot(posterior)+
+  geom_histogram(aes(prior_b_diagnosisTD), fill='red', color='black', alpha=0.3, bins=50)+
+  geom_histogram(aes(b_diagnosisTD), fill='green', color='black', alpha=0.3, bins=50)+
+  theme_classic()+
+  ggtitle('prior-posterior update check on intercept for TD')
+
+plot3 <- ggplot(posterior)+
+  geom_histogram(aes("prior_b_diagnosisASD:visit"), fill='red', color='black', alpha=0.3, bins=50)+
+  geom_histogram(aes("b_diagnosisASD:visit"), fill='green', color='black', alpha=0.3, bins=50)+
+  theme_classic()+
+  ggtitle('prior-posterior update check on slope for ASD')
+
+plot4 <- ggplot(posterior)+
+  geom_histogram(aes("prior_b_diagnosisTD:visit"), fill='red', color='black', alpha=0.3, bins=50)+
+  geom_histogram(aes("b_diagnosisTD:visit"), fill='green', color='black', alpha=0.3, bins=50)+
+  theme_classic()+
+  ggtitle('prior-posterior update check on slope for TD')
+
+
+plot5 <- ggplot(posterior)+
+  geom_histogram(aes(prior_cor_ID), fill='red', color='black', alpha=0.3, bins=50)+
+  geom_histogram(aes(cor_ID__Intercept__visit), fill='green', color='black', alpha=0.3, bins=50)+
+  theme_classic()+
+  ggtitle('prior-posterior update check on correlation between varying intercepts and slopes')
+
+plot6 <- ggplot(posterior)+
+  geom_histogram(aes(prior_sd_ID__Intercept), fill='red', color='black', alpha=0.3, bins=50)+
+  geom_histogram(aes(sd_ID__Intercept), fill='green', color='black', alpha=0.3, bins=50)+
+  theme_classic()+
+  ggtitle('Prior-posterior update check, the variability of the intercept')
+
+plot7 <- ggplot(posterior)+
+  geom_histogram(aes(prior_sd_ID__visit), fill='red', color='black', alpha=0.3, bins=50)+
+  geom_histogram(aes(sd_ID__visit), fill='green', color='black', alpha=0.3, bins=50)+
+  theme_classic()+
+  ggtitle('Prior-posterior update check, the variability of the slopes')
+
+plot3
+
+
+```
+
 
 ### Estimating effectsize, baysian power analysis 
+#### Function simulates data and return CI of slope difference 
+```{r}
+ fun_sim_data <- function(seed,n){
+   set.seed(seed)
+   
+   average_mlu <- 1.5
+ sd_mlu_asd <- 0.5
+ sd_mlu_td <- 0.3
+ 
+ change_mlu_asd <- 0.4/1.5
+ change_mlu_td <- 0.6/1.5
+ change_sd_mlu_asd <- 0.4*(0.4/1.5)
+ change_sd_mlu_td <- 0.2*(0.6/1.5)
+ e <- 0.2
+ 
+ int_asd <- rlnorm(n, meanlog=average_mlu, sdlog=sd_mlu_asd)
+int_td <- rlnorm(n, meanlog=average_mlu, sdlog=sd_mlu_td)
+
+slope_asd <- rnorm(n, mean=change_mlu_asd, sd=change_sd_mlu_asd)
+slope_td <- rnorm(n, mean = change_mlu_td, sd=change_sd_mlu_td)
+
+error_td <- rlnorm(n, meanlog=0, sdlog=e)
+error_asd <- rlnorm(n, meanlog=0, sdlog=e)
+
+   data <- 
+     tibble(diagnosis=rep(c('TD', 'ASD'), each=n)) %>% 
+     mutate(intercept=ifelse(diagnosis=='TD', int_td, int_asd)) %>% 
+
+     mutate(slope=ifelse(diagnosis=='TD', slope_td, slope_asd)) %>% 
+     mutate(error=ifelse(diagnosis=='TD', error_td, error_asd)) %>% 
+     dplyr::mutate(ID=row_number()) %>% 
+     slice(rep(1:n(), each=6)) %>% 
+     add_column(visit=rep(c(1,2,3,4,5,6), times=n+n))
+ 
+ for(i in seq(nrow(data))){
+   data$MLU[i] <- rnorm(1,data$intercept[i]+data$slope[i]*(data$visit[i]-1), data$error[i])
+ }
+   post <- update(MLU_prior_m1_fit,
+                  newdata = data,
+                  seed=seed) %>% 
+     as_draws_df() %>% 
+     mutate(slope_diff=(`b_diagnosisTD:visit`- `b_diagnosisASD:visit`))
+   
+   CI <- as.data.frame(t(quantile(post$slope_diff, probs=c(0.025, 0.975)))) %>% 
+     add_column(mean=mean(post$slope_diff))
+   return(CI)}
+   
+```
+
+#### running the functiong with different amount of participants
+```{r}
+n_sim <- 10
+
+s10 <- tibble(seed=1:n_sim) %>% 
+  mutate(b1=purrr::map(seed, fun_sim_data, n=10)) %>% 
+  unnest(b1)
+
+s20 <- tibble(seed=1:n_sim) %>% 
+  mutate(b1=purrr::map(seed, fun_sim_data, n=20)) %>% 
+  unnest(b1)
+
+s30 <- tibble(seed=1:n_sim) %>% 
+  mutate(b1=purrr::map(seed, fun_sim_data, n=30)) %>% 
+  unnest(b1)
+
+s40 <- tibble(seed=1:n_sim) %>% 
+  mutate(b1=purrr::map(seed, fun_sim_data, n=40)) %>% 
+  unnest(b1)
+
+s50 <- tibble(seed=1:n_sim) %>% 
+  mutate(b1=purrr::map(seed, fun_sim_data, n=50)) %>% 
+  unnest(b1)
+
+s75 <- tibble(seed=1:n_sim) %>% 
+  mutate(b1=purrr::map(seed, fun_sim_data, n=75)) %>% 
+  unnest(b1)
+
+s100 <- tibble(seed=1:n_sim) %>% 
+  mutate(b1=purrr::map(seed, fun_sim_data, n=100)) %>% 
+  unnest(b1)
+
+s180 <- tibble(seed=1:n_sim) %>% 
+  mutate(b1=purrr::map(seed, fun_sim_data, n=180)) %>% 
+  unnest(b1)
+
+s250 <- tibble(seed=1:n_sim) %>% 
+  mutate(b1=purrr::map(seed, fun_sim_data, n=250)) %>% 
+  unnest(b1)
+
+s300 <- tibble(seed=1:n_sim) %>% 
+  mutate(b1=purrr::map(seed, fun_sim_data, n=300)) %>% 
+  unnest(b1)
+```
+
 
 
 
