@@ -2,6 +2,7 @@
 title: "Assignment 1 - Language development in autistic and neurotypical children"
 output: html_document
 date: "2022-08-15"
+Author: Manuela Skov Thomasen
 ---
 
 ```{r setup, include=FALSE}
@@ -116,9 +117,9 @@ BONUS questions for Part 1: what if the difference between ASD and TD was 0? how
 ### Simulating data
 To make beta values between each visit we would need the standard diviation between visits 
 ```{r}
-average_mlu <- 1.5
- sd_mlu_asd <- 0.5
- sd_mlu_td <- 0.3
+average_mlu <- log(1.5)
+ sd_mlu_asd <- log(1.5+0.5)-log(1.5)
+ sd_mlu_td <- log(1.5+0.3)-log(1.5)
  
  change_mlu_asd <- 0.4/1.5
  change_mlu_td <- 0.6/1.5
@@ -130,14 +131,12 @@ n <- 100
 ```
 
 ```{r}
-int_asd <- rlnorm(n, meanlog=average_mlu, sdlog=sd_mlu_asd)
-int_td <- rlnorm(n, meanlog=average_mlu, sdlog=sd_mlu_td)
+int_asd <- rnorm(n, mean=average_mlu, sd=sd_mlu_asd)
+int_td <- rnorm(n, mean=average_mlu, sd=sd_mlu_td)
 
 slope_asd <- rnorm(n, mean=change_mlu_asd, sd=change_sd_mlu_asd)
 slope_td <- rnorm(n, mean = change_mlu_td, sd=change_sd_mlu_td)
 
-error_td <- rlnorm(n, meanlog=0, sdlog=e)
-error_asd <- rlnorm(n, meanlog=0, sdlog=e)
 ```
 
 ```{r}
@@ -145,14 +144,15 @@ error_asd <- rlnorm(n, meanlog=0, sdlog=e)
    tibble(diagnosis=rep(c('TD', 'ASD'), each=n)) %>% 
    mutate(intercept=ifelse(diagnosis=='TD', int_td, int_asd)) %>% 
    mutate(slope=ifelse(diagnosis=='TD', slope_td, slope_asd)) %>% 
-   mutate(error=ifelse(diagnosis=='TD', error_td, error_asd)) %>% 
+   mutate(error=ifelse(diagnosis=='TD', e, e)) %>% 
    dplyr::mutate(ID=row_number()) %>% 
    slice(rep(1:n(), each=6)) %>% 
    add_column(visit=rep(c(1,2,3,4,5,6), times=n+n))
  
  for(i in seq(nrow(sim_data))){
-   sim_data$MLU[i] <- rnorm(1,sim_data$intercept[i]+sim_data$slope[i]*(sim_data$visit[i]-1), sim_data$error[i])
+   sim_data$MLU[i] <- exp(rnorm(1, sim_data$intercept[i]+(sim_data$slope[i]*(sim_data$visit[i]-1)), sim_data$error[i]))
  }
+
 ```
 
 ### plot simulated data
@@ -263,46 +263,60 @@ plot1 <- ggplot(posterior)+
   geom_histogram(aes(prior_b_diagnosisASD), fill='red', color='black', alpha=0.3, bins=50)+
   geom_histogram(aes(b_diagnosisASD), fill='green', color='black', alpha=0.3, bins=50)+
   theme_classic()+
-  ggtitle('prior-posterior update check on interceps for ASD')
+  ggtitle('prior-posterior update check on interceps for ASD')+
+  xlab('intercept for ASD')
 
 plot2 <- ggplot(posterior)+
   geom_histogram(aes(prior_b_diagnosisTD), fill='red', color='black', alpha=0.3, bins=50)+
   geom_histogram(aes(b_diagnosisTD), fill='green', color='black', alpha=0.3, bins=50)+
   theme_classic()+
-  ggtitle('prior-posterior update check on intercept for TD')
+  ggtitle('prior-posterior update check on intercept for TD')+
+  xlab('intercept for TD')
 
 plot3 <- ggplot(posterior)+
-  geom_histogram(aes("prior_b_diagnosisASD:visit"), fill='red', color='black', alpha=0.3, bins=50)+
-  geom_histogram(aes("b_diagnosisASD:visit"), fill='green', color='black', alpha=0.3, bins=50)+
+  geom_histogram(aes(`prior_b_diagnosisASD:visit`), fill='red', color='black', alpha=0.3, bins=50)+
+  geom_histogram(aes(`b_diagnosisASD:visit`), fill='green', color='black', alpha=0.3, bins=50)+
   theme_classic()+
-  ggtitle('prior-posterior update check on slope for ASD')
+  ggtitle('prior-posterior update check on slope for ASD')+
+  xlab("Slope for ASD")
 
 plot4 <- ggplot(posterior)+
-  geom_histogram(aes("prior_b_diagnosisTD:visit"), fill='red', color='black', alpha=0.3, bins=50)+
-  geom_histogram(aes("b_diagnosisTD:visit"), fill='green', color='black', alpha=0.3, bins=50)+
+  geom_histogram(aes(`prior_b_diagnosisTD:visit`), fill='red', color='black', alpha=0.3, bins=50)+
+  geom_histogram(aes(`b_diagnosisTD:visit`), fill='green', color='black', alpha=0.3, bins=50)+
   theme_classic()+
-  ggtitle('prior-posterior update check on slope for TD')
+  ggtitle('prior-posterior update check on slope for TD')+
+  xlab("slope for TD")
 
 
 plot5 <- ggplot(posterior)+
   geom_histogram(aes(prior_cor_ID), fill='red', color='black', alpha=0.3, bins=50)+
   geom_histogram(aes(cor_ID__Intercept__visit), fill='green', color='black', alpha=0.3, bins=50)+
   theme_classic()+
-  ggtitle('prior-posterior update check on correlation between varying intercepts and slopes')
+  ggtitle('prior-posterior update check on correlation between varying intercepts and slopes')+
+  xlab("Correlation")
 
 plot6 <- ggplot(posterior)+
-  geom_histogram(aes(prior_sd_ID__Intercept), fill='red', color='black', alpha=0.3, bins=50)+
+  geom_histogram(aes(prior_sd_ID), fill='red', color='black', alpha=0.3, bins=50)+
   geom_histogram(aes(sd_ID__Intercept), fill='green', color='black', alpha=0.3, bins=50)+
   theme_classic()+
-  ggtitle('Prior-posterior update check, the variability of the intercept')
+  ggtitle('Prior-posterior update check, the variability of the intercept')+
+  xlab("Intercept")
 
 plot7 <- ggplot(posterior)+
-  geom_histogram(aes(prior_sd_ID__visit), fill='red', color='black', alpha=0.3, bins=50)+
+  geom_histogram(aes(prior_sd_ID), fill='red', color='black', alpha=0.3, bins=50)+
   geom_histogram(aes(sd_ID__visit), fill='green', color='black', alpha=0.3, bins=50)+
   theme_classic()+
-  ggtitle('Prior-posterior update check, the variability of the slopes')
+  ggtitle('Prior-posterior update check, the variability of the slopes')+
+  xlab("Intercept")
 
+
+plot1
+plot2
 plot3
+plot4
+plot5
+plot6
+plot7
 
 
 ```
@@ -314,9 +328,9 @@ plot3
  fun_sim_data <- function(seed,n){
    set.seed(seed)
    
-   average_mlu <- 1.5
- sd_mlu_asd <- 0.5
- sd_mlu_td <- 0.3
+   average_mlu <- log(1.5)
+ sd_mlu_asd <- log(1.5+0.5)-log(1.5)
+ sd_mlu_td <- log(1.5+0.3)-log(1.5)
  
  change_mlu_asd <- 0.4/1.5
  change_mlu_td <- 0.6/1.5
@@ -324,28 +338,28 @@ plot3
  change_sd_mlu_td <- 0.2*(0.6/1.5)
  e <- 0.2
  
- int_asd <- rlnorm(n, meanlog=average_mlu, sdlog=sd_mlu_asd)
-int_td <- rlnorm(n, meanlog=average_mlu, sdlog=sd_mlu_td)
+ int_asd <- rnorm(n, mean=average_mlu, sd=sd_mlu_asd)
+int_td <- rnorm(n, mean=average_mlu, sd=sd_mlu_td)
 
 slope_asd <- rnorm(n, mean=change_mlu_asd, sd=change_sd_mlu_asd)
 slope_td <- rnorm(n, mean = change_mlu_td, sd=change_sd_mlu_td)
 
-error_td <- rlnorm(n, meanlog=0, sdlog=e)
-error_asd <- rlnorm(n, meanlog=0, sdlog=e)
+
 
    data <- 
      tibble(diagnosis=rep(c('TD', 'ASD'), each=n)) %>% 
      mutate(intercept=ifelse(diagnosis=='TD', int_td, int_asd)) %>% 
 
      mutate(slope=ifelse(diagnosis=='TD', slope_td, slope_asd)) %>% 
-     mutate(error=ifelse(diagnosis=='TD', error_td, error_asd)) %>% 
+     mutate(error=ifelse(diagnosis=='TD', e, e)) %>% 
      dplyr::mutate(ID=row_number()) %>% 
      slice(rep(1:n(), each=6)) %>% 
      add_column(visit=rep(c(1,2,3,4,5,6), times=n+n))
  
  for(i in seq(nrow(data))){
-   data$MLU[i] <- rnorm(1,data$intercept[i]+data$slope[i]*(data$visit[i]-1), data$error[i])
+   data$MLU[i] <- exp(rnorm(1,data$intercept[i]+(data$slope[i]*(data$visit[i]-1)), data$error[i]))
  }
+   data <- data[,c(1,5,6,2,3,4,7)]
    post <- update(MLU_prior_m1_fit,
                   newdata = data,
                   seed=seed) %>% 
@@ -364,6 +378,10 @@ n_sim <- 10
 
 s10 <- tibble(seed=1:n_sim) %>% 
   mutate(b1=purrr::map(seed, fun_sim_data, n=10)) %>% 
+  unnest(b1)
+
+s15 <- tibble(seed=1:n_sim) %>% 
+  mutate(b1=purrr::map(seed, fun_sim_data, n=15)) %>% 
   unnest(b1)
 
 s20 <- tibble(seed=1:n_sim) %>% 
@@ -402,7 +420,52 @@ s300 <- tibble(seed=1:n_sim) %>%
   mutate(b1=purrr::map(seed, fun_sim_data, n=300)) %>% 
   unnest(b1)
 ```
+#### Effectsize of slope difference (plots)
 
+```{r}
+plot_s10 <- s10 %>% 
+  ggplot(aes(x=seed, y=mean, ymin = `2.5%`, ymax= `97.5%` ))+
+  geom_pointrange(fatten = 1/2)+
+  geom_hline(yintercept = c(0, 0.5), colour= 'green')+
+  labs(x="seed (simulation index)", y= "slope difference")+
+  ggtitle("slope difference, 10 participants")
+
+plot_s180 <- s180 %>% 
+  ggplot(aes(x=seed, y=mean, ymin = `2.5%`, ymax= `97.5%` ))+
+  geom_pointrange(fatten = 1/2)
+  geom_hline(yintercept = c(0, 0.5), colour= 'green')+
+  labs(x="seed (simulation index)", y= "slope difference")+
+  ggtitle("slope difference, 180 participants")
+
+plot_s10
+```
+
+
+#### Power analysis 
+
+```{r}
+power_analysis_fun <- function(sim_nr, n){
+  sim_nr %>% 
+    mutate(two_half=ifelse(`2.5%`>0,1,0 )) %>%
+    summarise(power=mean(two_half)) %>% 
+    add_column(number_of_participants=n)
+}
+
+power_analysis_sum <- bind_rows(
+  power_analysis_fun(s10, 10),
+  power_analysis_fun(s15, 15),
+  power_analysis_fun(s20, 20),
+  power_analysis_fun(s30, 30),
+  power_analysis_fun(s40, 40),
+  power_analysis_fun(s50, 50),
+  power_analysis_fun(s75, 75),
+  power_analysis_fun(s100, 100),
+  power_analysis_fun(s180, 180),
+  power_analysis_fun(s250, 250),
+  power_analysis_fun(s300, 300))
+
+power_analysis_sum
+```
 
 
 

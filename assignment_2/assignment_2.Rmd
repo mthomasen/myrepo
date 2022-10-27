@@ -9,11 +9,42 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+```{r}
+pacman::p_load(glue,
+       tidyr,
+       data.table,
+       moments,
+       tidybayes,
+       tibble,
+       cowplot,
+       viridis,
+       brms,
+       rstan,
+       cmdstanr,
+       magrittr,
+       gridExtra,
+       grid,
+       lattice,
+       ggplot2,
+       ggridges,
+       ellipse,
+       Rmisc, 
+       dplyr, 
+       "rmarkdown", 
+       knitr)
+
+pacman::p_load(tidyverse)
+
+pacman::p_load(purr)
+
+pacman::p_load(MCMCglmm)
+```
+
 # Assignment 2: meta-analysis
 
 ## Questions to be answered
 
-1. Simulate data to setup the analysis and gain insight on the structure of the problem. Simulate one dataset of 100 studies (n of participants should follow a normal distribution with mean of 20, sd of 10, but no fewer than 10 participants), with a mean effect size of 0, average deviation by study of .4 and measurement error of .8. The data you get should have one row per study, with an effect size mean and standard error. Build a proper bayesian model to analyze the simulated data. Then simulate publication bias (only some of the studies you simulate are likely to be published, which?), the effect of publication bias on your estimates (re-run the model on published studies, assess the difference), and use at least one technique to assess publication bias. remember to use at least one plot to visualize your results. BONUS question: do a power/precision analysis.
+1. Simulate data to setup the analysis and gain insight on the structure of the problem. Simulate one dataset of 100 studies (n of participants should follow a normal distribution with mean of 20, sd of 10, but no fewer than 10 participants), with a mean effect size of 0.4, average deviation by study of .4 and measurement error of .8. The data you get should have one row per study, with an effect size mean and standard error. Build a proper bayesian model to analyze the simulated data. Then simulate publication bias (only some of the studies you simulate are likely to be published, which?), the effect of publication bias on your estimates (re-run the model on published studies, assess the difference), and use at least one technique to assess publication bias. remember to use at least one plot to visualize your results. BONUS question: do a power/precision analysis.
 
 2. What is the current evidence for distinctive vocal patterns in schizophrenia? 
 Use the data from Parola et al (2020) - https://www.dropbox.com/s/0l9ur0gaabr80a8/Matrix_MetaAnalysis_Diagnosis_updated290719.xlsx?dl=0 - focusing on pitch variability (PITCH_F0SD).  Describe the data available (studies, participants). Using the model from question 1 analyze the data, visualize and report the findings: population level effect size; how well studies reflect it; influential studies, publication bias. BONUS question: add the findings from https://www.medrxiv.org/content/10.1101/2022.04.03.22273354v2. BONUS question: assess the effect of task on the estimates (model comparison with baseline model)
@@ -22,12 +53,39 @@ Use the data from Parola et al (2020) - https://www.dropbox.com/s/0l9ur0gaabr80a
 # Question 1
 
 ```{r}
+mean_effect <- 0.4
+effect_sd <- 0.4
+meas_error <- 0.8
+
+par_mean <- 20
+par_sd <- 10
+
+n <- 100
+
+```
+
+
+
+```{r}
+sim_studies <- tibble(study_ID = seq(1:n)) %>%
+  mutate(n_participants= round(rtnorm(n, mean=par_mean, sd=par_sd, lower=10)))
+
+
+for (i in seq(nrow(sim_studies))){
+  sim_studies$true_effect[i] <- rnorm(1,mean_effect,effect_sd)
+  temp <- rnorm(sim_studies$n_participants[i], sim_studies$true_effect[i], meas_error)
+  sim_studies$effect_size[i] <- mean(temp)
+  sim_studies$sd_effect[i] <- sd(temp)
+  sim_studies$standard_error[i] <- sim_studies$sd_effect[i]/sqrt(sim_studies$n_participants[i])
+}
 
 ```
 
 ## Question 2
 
 ```{r}
+
+  
 
 
 ```
